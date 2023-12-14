@@ -1,0 +1,59 @@
+/* css styles */
+body {
+    background-color: #fbe8e8c5;
+    font-family: "Lucida Console", Courier, monospace; 
+    margin-left: 2em;
+}
+
+.image-text {
+    position: relative;
+}
+
+.image-text h1 {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    text-shadow: 2px 2px 4px black;
+}
+
+p { 
+    font-family: "Lucida Console", Courier, monospace; 
+}
+
+.sidebar nav[role=doc-toc] ul>li>a.active,
+.sidebar nav[role=doc-toc] ul>li>ul>li>a.active {
+    border-left: 1mm solid #ff5A60;
+    color: #ff5A60 !important;
+}
+
+div.navbarCollapse {
+    padding: 0px 25px;
+}
+
+div.cell p{
+    font-size: 11px;
+    font-style: italic;
+    padding: 0px 100px;
+}
+
+.navbar-dark {
+    background-color: #fbe8e8c5; /*#FFF9F9 */
+    background-image: linear-gradient(#ff5A60, #ff5a607f);
+}
+
+.nav-link:hover {
+    width: 100%;
+    height: 100%;
+    border-top: 3px solid #fff;
+    border-bottom: 3px solid #fff;
+    transition: all 0.3s ease;
+}
+
+
+/* .toc {
+    position: absolute;
+    right: 0;
+    top: 0;
+  } */

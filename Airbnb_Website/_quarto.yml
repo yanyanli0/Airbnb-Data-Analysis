@@ -1,0 +1,51 @@
+project:
+  type: website
+
+website:
+  search: false
+  favicon: images/favicon.png
+  navbar:
+    logo: images/logo.png
+    tools:
+      - icon: github
+        href: https://github.com/anly503/spring2023-project-team-21
+    title: "Airbnb ANLY"
+    # title: false
+    # background: "#ff385c"
+    pinned: true
+    right:
+      - href: index.qmd
+        text: Home
+      - href: Visualizations.qmd
+        text: Story
+  page-footer:
+    border: false
+    left: "Published with [Quarto](https://quarto.org/) v<?quarto.version?>" 
+    right: "© 2023 [Anly503 Team21] | [Georgetown University]"
+
+execute:
+    echo: false
+
+format:
+    html:
+      page-layout: full
+      toc: true
+      # toc: false
+      toc-depth: 2
+      toc-title: Contents
+      embed-resources: true
+      code-copy: true
+      code-line-numbers: true
+      number-sections: false 
+      #ff5a6022
+      theme: default
+      # backgroundcolor: "#ff385c"
+      background-color: "#ff5A60"
+      linkcolor: "#ff5A60"
+      fontsize: 16px;
+      css: styles.css
+      grid: 
+        body-width: 1300px
+        margin-width: 50px
+        gutter-width: 1rem
+      margin: 8% 0;

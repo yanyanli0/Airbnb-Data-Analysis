@@ -1,0 +1,22 @@
+---
+format:
+    html:
+      toc: false
+
+---
+
+# The team
+
+::: {layout-nrow="2"}
+![](./images/team1.png)
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+
+![](./images/team2.png)
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+
+![](./images/team3.png)
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+
+![](./images/team4.png)
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+:::

@@ -1,0 +1,23 @@
+---
+format:
+    html:
+      toc: false
+
+---
+
+::: column-page
+![](images/img1.jpg){width="100%"}
+:::
+
+# Overview
+
+| Airbnb is one of the most visited rental applications. According to relevant statistics, it's estimated that Airbnb has more than 20% market share in the rental industry until 2023 and the average revenue of hosts annually is \$13,800\[Reference\]. For landlords, understanding pricing patterns and the factors that influence prices is an effective way to increase revenue. In our project, we aim to identify potential pricing and revenue-related characteristics from listing information throughout the United States. At the same time, it is very intriguing to see what amenities are most widely offered by tenants because travelers' requirements for living conditions are gradually increasing despite being in a short-stay residence. To some extent, the most widely provided amenities denote the minimum standard of amenities in the listing.
+| 
+
+# The Data
+
+::: column-page
+![](images/data.png){width="100%"}
+:::
+
+The data we use comes from the website named Inside Airbnb \[Link to data source\] where archives scraped data on Airbnb. All the data contains mainly two aspects. One of them is the detailed descriptions of existing listings in 33 cities in the United States, including features like latitude, longitude, room types, and rating of different aspects. The other dataset records the price and availability during the next 30, 60, 90, and 365 days. After joining the two datasets together, the future expected revenue for each listing can be calculated by using the unit price one night and the number of available nights.

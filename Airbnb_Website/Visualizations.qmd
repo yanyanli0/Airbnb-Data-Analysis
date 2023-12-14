@@ -1,0 +1,1024 @@
+---
+format:
+    html:
+        toc: true
+---
+
+# Airbnb listings in U.S.
+
+```{python}
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
+import altair as alt
+import glob
+import os
+import folium
+import pandas as pd
+from folium.plugins import HeatMapc
+import json
+
+# set font family
+font_family = 'Lucida Console'
+```
+
+# Introduction
+
+Airbnb is one of the most visited rental applications. According to relevant statistics, it’s estimated that Airbnb has more than 20% market share in the rental industry until 2023 and the average revenue of hosts annually is $13,800[Reference](https://www.searchlogistics.com/learn/statistics/airbnb-statistics/). For landlords, understanding pricing patterns and the factors that influence prices is an effective way to increase revenue. In our project, we aim to identify potential pricing and revenue-related characteristics from listing information throughout the United States. At the same time, it is very intriguing to see what amenities are most widely offered by tenants because travelers’ requirements for living conditions are gradually increasing despite being in a short-stay residence. To some extent, the most widely provided amenities denote the minimum standard of amenities in the listing.
+
+# About Data
+
+The data we use comes from the website named Inside [Airbnb data source](http://insideairbnb.com/) where archives scraped data on Airbnb. All the data contains mainly two aspects. One of them is the detailed descriptions of existing listings in 33 cities in the United States, including features like latitude, longitude, room types, and rating of different aspects. The other dataset records the price and availability during the next 30, 60, 90, and 365 days. After joining the two datasets together, the future expected revenue for each listing can be calculated by using the unit price one night and the number of available nights.
+
+## General Info
+
+### The distribution of Airbnb in the states and prices
+
+```{python}
+#| warning: false
+#| label: all-states-map
+#| fig-cap: "Figure 1: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on"
+
+df=pd.read_csv("../data/processed/clean_listings.gz")
+df = df.astype({'id': 'object', 'host_id': 'object', 'latitude': 'float', 'longitude': 'float', 'accommodates': 'float', 'bedrooms': 'float', 'beds': 'float', 'price': 'float', 
+               'minimum_nights': 'int', 'maximum_nights': 'int', 'number_of_reviews': 'int', 'review_scores_rating': 'float',})
+
+states = df[["state", "id", "price", "number_of_reviews", "review_scores_rating", "city"]].groupby(['state']).agg(
+                        number_listings=('id', 'nunique'),
+                        review_counts=('number_of_reviews', 'sum'),
+                        median_price=('price', 'median'),
+                        average_rating=('review_scores_rating', 'mean'),
+                        cities=('city', 'nunique')).reset_index()
+
+# convert state full name to code
+state_dict = {
+    'Alabama': 'AL',
+    'Alaska': 'AK',
+    'Arizona': 'AZ',
+    'Arkansas': 'AR',
+    'California': 'CA',
+    'Colorado': 'CO',
+    'Connecticut': 'CT',
+    'Delaware': 'DE',
+    'Florida': 'FL',
+    'Georgia': 'GA',
+    'Hawaii': 'HI',
+    'Idaho': 'ID',
+    'Illinois': 'IL',
+    'Indiana': 'IN',
+    'Iowa': 'IA',
+    'Kansas': 'KS',
+    'Kentucky': 'KY',
+    'Louisiana': 'LA',
+    'Maine': 'ME',
+    'Maryland': 'MD',
+    'Massachusetts': 'MA',
+    'Michigan': 'MI',
+    'Minnesota': 'MN',
+    'Mississippi': 'MS',
+    'Missouri': 'MO',
+    'Montana': 'MT',
+    'Nebraska': 'NE',
+    'Nevada': 'NV',
+    'New Hampshire': 'NH',
+    'New Jersey': 'NJ',
+    'New Mexico': 'NM',
+    'New York': 'NY',
+    'North Carolina': 'NC',
+    'North Dakota': 'ND',
+    'Ohio': 'OH',
+    'Oklahoma': 'OK',
+    'Oregon': 'OR',
+    'Pennsylvania': 'PA',
+    'Rhode Island': 'RI',
+    'South Carolina': 'SC',
+    'South Dakota': 'SD',
+    'Tennessee': 'TN',
+    'Texas': 'TX',
+    'Utah': 'UT',
+    'Vermont': 'VT',
+    'Virginia': 'VA',
+    'Washington': 'WA',
+    'West Virginia': 'WV',
+    'Wisconsin': 'WI',
+    'Wyoming': 'WY'
+}
+states['code'] = states['state'].map(state_dict)
+states['Reviews/Listing'] = states['review_counts']/states['number_listings']
+states['Listing/City'] = states['number_listings']/states['cities']
+
+states.to_csv('../data/analytical/state_listings.gz', compression='gzip', index=False)
+
+
+
+state = states.copy()
+
+for col in state.columns:
+    state[col] = state[col].astype(str)
+
+state['text'] = state['state'] + '<br>' + \
+    'Number of cities ' + state['cities'] + '<br>' + \
+    'Total reviews ' + state['review_counts'] + '<br>' + \
+    'Reviews per Listing ' + state['Reviews/Listing'] + '<br>' + \
+    'Listings per City ' + state['Listing/City']
+
+fig = go.Figure()
+
+fig.add_trace(
+    go.Choropleth(
+    locations=state['code'],
+    z=state['median_price'].astype(float),
+    locationmode='USA-states',
+    colorscale='PuRd', 
+    autocolorscale=False,
+    text=state['text'], # hover text
+    marker_line_color='white', # line markers between states
+    colorbar_title="Median USD",
+    visible=True,
+))
+
+fig.add_trace(
+    go.Choropleth(
+    locations=state['code'],
+    z=state['number_listings'].astype(int),
+    locationmode='USA-states',
+    colorscale='Burg',
+    autocolorscale=False,
+    text=state['text'], # hover text
+    marker_line_color='white', # line markers between states
+    colorbar_title="Listing Counts",
+    visible=False,
+))
+
+fig.add_trace(
+    go.Choropleth(
+    locations=state['code'],
+    z=state['average_rating'].astype(float),
+    locationmode='USA-states',
+    colorscale='Redor',
+    autocolorscale=False,
+    text=state['text'], # hover text
+    marker_line_color='white', # line markers between states
+    colorbar_title="Mean Rating",
+    visible=False,
+))
+
+button_height = 0.2
+x1_loc = 0.00
+y1_loc = 1
+
+fig.update_layout(
+    title_text='2021/6-2022/5 US States Airbnb Data<br>(Hover for other information)',
+    geo = dict(
+        scope='usa',
+        projection=go.layout.geo.Projection(type = 'albers usa'),
+        showlakes=True, # lakes
+        lakecolor='rgb(255, 255, 255)'),
+    updatemenus=[
+        # BUTTON-1: OPACITY
+        dict(
+            # NOTICE THAT THE OPTION ARE A LIST OF DICTIONARIES
+            # IMPORTANT: args specifies the key-value pairing for what to change
+            buttons=[
+                dict(
+                    label="Median Price",               # LABEL SHOWN TO USER
+                    method="update",           # MODIFICATION TYPE (SEE ABOVE)
+                     args=[{"visible": [True, False, False]},
+                           {"subtitle": "Median Price (states)"}]
+                     ),
+                dict(
+                    label="Number of listings",            # LABEL SHOWN TO USER
+                    method="update",                    # MODIFICATION TYPE (SEE ABOVE)
+                     args=[{"visible": [False, True, False]},  # BOOLEAN VALUES FOR EACH TRACE
+                           {"subtitle": "Number of listings (states)"}]
+                     ),
+                dict(
+                label="Average Rating",               # LABEL SHOWN TO USER
+                method="update",           # MODIFICATION TYPE (SEE ABOVE)
+                    args=[{"visible": [False, False, True]},
+                        {"subtitle": "Average Rating (states)"}]
+                    ),              
+            ],
+            # PLACEMENT AND META DATA FOR THE BUTTON
+            direction="down",
+            showactive=True,  # HIGHLIGHTS ACTIVE DROPDOWN ITEM OR ACTIVE BUTTON IF TRUE
+            pad={"r": 10, "t": 10},  # PADDING
+            x=x1_loc,  # POSITION
+            y=y1_loc,
+            xanchor="left",  # ANCHOR POINT
+            yanchor="top",
+        )
+    ]
+)
+
+# Change the font family
+fig.update_layout(
+    title={
+        'font': {'family': "Lucida Console", 'size': 20}
+    },
+    legend={'font': {'family': "Lucida Console", 'size': 14}},
+    font={'family': "Lucida Console", 'size': 14}
+)
+# Change the backgroung color
+fig.update_layout(geo_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',paper_bgcolor='rgba(0,0,0,0)')
+
+fig.show()
+
+```
+
+California has the most listings overall from Airbnb dataset, but they are spread across eight cities which could have significantly different characteristics and patterns in terms of ratings, prices, and property types. New York City and Hawaii, on the other hand, are both famous tourist destinations, and they are expected to have high listing volumes and higher median prices.
+
+While Hawaii does have the highest median price among all states, and Rhode Island has the second-highest median price, we cannot overlook the importance of ratings in generating revenue.
+
+Ratings provide a comprehensive indicator of a traveler's overall experience with an Airbnb listing, taking into account many different aspects such as location, amenities, cleanliness, and host communication. As such, ratings are assumed to be highly correlated with revenue.
+
+# Analytics
+
+## Nationwide
+
+### Ratings by states
+
+```{python}
+#| warning: false
+#| label: states-rating
+#| fig-cap: "Figure 2: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on"
+
+# Prepare base dataframe
+df = pd.read_csv("../data/processed/clean_listings.gz", compression='gzip')
+
+df1 = df.dropna(subset=["host_total_listings_count","review_scores_rating","review_scores_accuracy","review_scores_cleanliness","review_scores_checkin","review_scores_communication",\
+                  "review_scores_location",'host_total_listings_count',"beds","bedrooms"]\
+          ,how="any")
+
+# change data type
+df1 = df1.astype({'beds': 'float', 'host_total_listings_count':'int',
+                  'review_scores_accuracy': 'float', 'review_scores_cleanliness':'float', 'review_scores_checkin':'float', 
+                  'review_scores_communication':'float', 'review_scores_location':'float', 'review_scores_rating': 'float'})
+
+alt.data_transformers.enable('default',max_rows=None)
+
+
+df1_3 = df1.groupby(["state","city"], as_index=False)['review_scores_rating', 'review_scores_accuracy',
+       'review_scores_cleanliness', 'review_scores_checkin',
+       'review_scores_communication', 'review_scores_location'].mean()
+
+df1_3.rename(columns={'review_scores_rating': 'Rating', 'review_scores_accuracy': 'Accuracy', 'review_scores_cleanliness':'Cleanliness', 'review_scores_checkin':'Checkin', 'review_scores_communication':'Communication','review_scores_location':'Location'}, inplace=True)
+
+
+paral = (alt.Chart(df1_3, width=500).transform_window(
+    index='count()'
+).transform_fold(
+    ['Rating', 'Accuracy', 'Cleanliness', 'Checkin', 'Communication', 'Location']
+).mark_line().encode(
+    # Map different scoring perspectives to x-axis
+    x=alt.X('key:N'
+            , title="Scoring perspective"
+            , axis=alt.Axis(labelAngle=0)
+            , sort=['Rating', 'Accuracy', 'Checkin', 'Communication', 'Cleanliness', 'Location'])
+    # Map scores to y-axis
+    , y=alt.Y('value:Q'
+            , scale=alt.Scale(domain=[df1_3.iloc[:,2:8].min().min()-0.05, 5])
+            , title="Scores (out of 5)"),
+    # Map different states to color
+    color='state:N',
+    detail='index:N',
+    opacity=alt.value(0.6)
+).properties(
+    width=800,
+    height=500
+).configure_axis(
+    labelFontSize=16
+    , titleFontSize=16
+    , labelFont=font_family
+    ,titleFont=font_family
+).configure_title(
+    fontSize=20,
+    font=font_family
+).configure_legend(
+    titleFontSize=14,
+    labelFontSize=14,
+    titleFont=font_family,
+    labelFont=font_family  # set legend label font family
+).configure(
+    background='transparent'
+).interactive()
+)
+
+paral
+
+```
+
+There are 33 lines in the chart, each representing the average score of all listings in a city in terms of six different scoring perspectives. Among all the 33 cities, the worst overall score comes from New Jersy.
+
+Overall, it seems that the rating of service attitude is high, such as whether the check-in is convenient and fast, and whether the communication is friendly and smooth. However, the ratings regarding the hardware conditions of the house itself are relatively low, such as cleanliness and location.
+
+It seems that people are more likely to give high ratings for good communication with the host, so improving service attitude is the quickest way to improve ratings. Also, for a listing, since location is a factor that cannot be changed, improving cleanliness is another way to improve the overall rating. Because there is more room for improvement in the cleanliness rating, it will be the most effective way once the cleanliness is improved.
+
+### Price of different room types
+
+```{python}
+#| warning: false
+#| label: roomType-price
+#| fig-cap: "Figure 3: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on"
+
+df1_1 = df1.loc[:,['room_type','price']]
+
+# PLOT
+# Specify the field for selection
+brush = alt.selection_single(fields=['room_type'])
+
+color = alt.condition(brush,
+                      alt.value('#ff385c'),
+                      alt.value('#FCFFE7'))
+
+# Make the distribution plot on the left
+bar=(alt.Chart(df1_1, title="Average price of different types of rooms")
+ .mark_bar()
+ .encode(x=alt.X('room_type:N'
+                 , sort=alt.EncodingSortField(field='price', op='mean', order='descending')
+                 , axis=alt.Axis(labelAngle=-10, grid=False)
+                 , title='Room Type')
+        , y=alt.Y('mean(price):Q',title='Average Price ($)')
+        , color=color
+        , text = "mean(price):Q"
+        , tooltip = ["mean(price):Q"]
+        )
+.add_selection(
+    brush
+).properties(
+    width=300
+)
+)
+
+
+# Make the distribution plot on the right
+color_domain = ["Hotel room", "Entire home/apt", "Private room", "Shared room"]
+color_range = ["#11052C","#005F99","#ff385c","#FFE459"]
+color_scale=alt.Scale(domain=color_domain, range=color_range)
+
+
+density = (alt.Chart(df1_1, title = "Distribution of price for different types of rooms")
+.transform_filter(
+    brush
+).transform_filter(
+    alt.datum.price>0
+).transform_density(
+    'price',
+    groupby=['room_type'],
+    as_=['price', 'density']
+).mark_area(opacity=0.6)
+.encode(
+    x=alt.X('price:Q', scale=alt.Scale(type='log'), title="Price ($)", axis=alt.Axis(grid=False,values=[1,10,100,1000,10000,100000]))
+    , y=alt.Y('density:Q', title='Density', axis=alt.Axis(grid=False))
+    , color=alt.Color('room_type:N', title="Room type", scale=color_scale)
+).properties(
+    width=450
+)
+)
+
+chart = alt.hconcat(bar,density
+).configure_axis(
+    labelFontSize=16
+    , titleFontSize=16
+    , labelFont=font_family
+    , titleFont=font_family
+).configure_title(
+    fontSize=18,
+    font=font_family,
+    fontWeight="bold"
+).configure_legend(
+    titleFontSize=14,
+    labelFontSize=14,
+    titleFont=font_family,
+    labelFont=font_family  # set legend label font family
+).configure(
+    background='transparent'  # set background color transparent
+)
+
+chart
+```
+
+As is commonly perceived, hotel rooms have the highest average price, followed by entire home/apartment rentals, private rooms, and shared rooms. The average price of an entire home/apartment is twice as much as a private room. Focusing on nationwide data, the average price of a hotel for one night is \$392, and the shared room that is the cheapest is \$88.\
+
+From the host's perspective, unless the property has an absolute advantage in one aspect, such as a very good location and complete housing infrastructure, it is much safer to price the property at an average price to avoid lowering the price/performance ratio of the property, resulting in a lower probability of renting.
+
+### Look at the occupancy rate
+
+```{python}
+#| warning: false
+#| label: occupancy-rate
+#| fig-cap: "Figure 4: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on"
+
+df1_2 = df1.groupby(["room_type", "minimum_nights", "maximum_nights"],as_index=False)["availability_30","availability_60","availability_90","availability_365"].mean()
+
+df1_2["occupancy_rate_30"] = df1_2.loc[:,"availability_30"]/30
+df1_2["occupancy_rate_60"] = df1_2.loc[:,"availability_60"]/60
+df1_2["occupancy_rate_90"] = df1_2.loc[:,"availability_90"]/90
+df1_2["occupancy_rate_365"] = df1_2.loc[:,"availability_365"]/365
+
+df1_2.drop(columns=["availability_30","availability_60","availability_90","availability_365"], inplace=True)
+
+df1_2= pd.melt(df1_2, id_vars=["room_type","minimum_nights","maximum_nights"], value_vars=["occupancy_rate_30","occupancy_rate_60","occupancy_rate_90","occupancy_rate_365"], var_name="occupancy_duration",value_name="occupancy_rate")
+df1_2.loc[df1_2["occupancy_duration"]=="occupancy_rate_30", "occupancy_duration"]="Future 30 days"
+df1_2.loc[df1_2["occupancy_duration"]=="occupancy_rate_60", "occupancy_duration"]="Future 60 days"
+df1_2.loc[df1_2["occupancy_duration"]=="occupancy_rate_90", "occupancy_duration"]="Future 90 days"
+df1_2.loc[df1_2["occupancy_duration"]=="occupancy_rate_365", "occupancy_duration"]="Future 365 days"
+
+''' Detection '''
+# IQR
+Q1_min_nights = np.percentile(df1_2['minimum_nights'], 25,
+                   method = 'midpoint')
+Q3_min_nights = np.percentile(df1_2['minimum_nights'], 75,
+                   method = 'midpoint')
+IQR1 = Q3_min_nights - Q1_min_nights
+
+Q1_max_nights = np.percentile(df1_2['maximum_nights'], 25,
+                   method = 'midpoint')
+Q3_max_nights = np.percentile(df1_2['maximum_nights'], 75,
+                   method = 'midpoint')
+IQR2 = Q3_max_nights-Q1_max_nights
+
+# Upper bound
+upper1 = Q3_min_nights+1.5*IQR1
+upper1_index = df1_2[df1_2["minimum_nights"]>=upper1].index.to_list()
+
+upper2 = Q3_max_nights+1.5*IQR2
+upper2_index = df1_2[df1_2["maximum_nights"]>=upper2].index.to_list()
+
+# Lower bound
+lower1 = Q1_min_nights-1.5*IQR1
+lower1_index = df1_2[df1_2["minimum_nights"]<=lower1].index.to_list()
+
+lower2 = Q1_max_nights-1.5*IQR2
+lower2_index = df1_2[df1_2["maximum_nights"]<=lower2].index.to_list()
+
+# Index to be removed
+ind = list(set(upper1_index+lower1_index+upper2_index+lower2_index))
+
+# Removing the outliers
+df1_2.drop(ind, inplace=True)
+
+
+# Create a faceted chart based on a categorical variable
+faceted_chart = alt.Chart(df1_2, title="Occupancy rate with different length-of-stay restrictions").mark_rect().encode(
+    x=alt.X('minimum_nights:Q', title='Minimum nights', axis=alt.Axis(tickMinStep=10,tickCount=6,grid=False), scale=alt.Scale(domain=[min(df1_2["minimum_nights"]), max(df1_2["minimum_nights"])])),
+    y=alt.Y('maximum_nights:Q', title='Maximum nights', axis=alt.Axis(tickMinStep=50,tickCount=4), scale=alt.Scale(domain=[min(df1_2["maximum_nights"]), max(df1_2["maximum_nights"])])),
+    color=alt.Color('occupancy_rate', title='Occup rate', scale=alt.Scale(scheme="redpurple")),
+    tooltip=["minimum_nights","maximum_nights"],
+    column=alt.Column('occupancy_duration:N', title='Time period', sort=["occupancy_rate_30","occupancy_rate_60","occupancy_rate_90","occupancy_rate_365"]),
+    row=alt.Row('room_type:N', title='Room type', sort=["Hotel room","Entire home/apt","Private room","Shared room"]),
+).configure_axis(
+    labelFontSize=18,
+    titleFontSize=18,
+    labelFont=font_family,  # set axis label font family
+    titleFont=font_family  # set axis title font family
+).configure_title(
+    fontSize=20,
+    font=font_family,  # set chart title font family
+    anchor="middle"
+).configure_header(
+    titleFontSize=18,
+    labelFontSize=18,
+    labelFont=font_family,  # set header label font family
+    titleFont=font_family  # set header title font family
+).configure_legend(
+    titleFontSize=14,
+    labelFontSize=14,
+    titleFont=font_family,
+    labelFont=font_family  # set legend label font family
+).properties(
+    width=200,
+    height=160
+).configure(
+    background='transparent'  # set background color transparent
+)
+
+# Display the chart
+faceted_chart
+
+```
+
+Hotel room is the room type with highest occupancy rate no matter it is long-term or short-term. For entire home/apartment, the number of maximum nights of listings with the highest occupancy rate is concentrated in the range above 800, meaning that the rental contract of entire homes and apartments tends to be more stable compared to other room types.
+
+## From Nationwide to the City
+
+We have chosen the average rating as a key factor to narrow down our analysis in order to identify potential strategies and provide valuable insights to households to increase revenue. Although Montana has the highest average rating, the number of listings is too small. We will focus on analyzing North Carolina which has the second high average rating with a relatively large number of listings.
+
+By narrowing down the focus from nationwide to North Carolina and then to Asheville, we can better understand the specific trends within the state and city. This will allow for a more detailed analysis, which can be valuable for hosts and local businesses. Finally, we can make informed decisions about the local Airbnb market to help them out.
+
+### The Airbnb listings in Asheville, NC
+
+::: grid
+::: g-col-6
+```{python}
+#| warning: false
+#| label: nc-map
+#| fig-cap: "Figure 5: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on."
+
+df=pd.read_csv("../data/processed/clean_airbnb.gz")
+
+# Keep only unique rows based on the "id" column
+#1833 listings
+df_unique = df.drop_duplicates(subset=['id'])
+
+df_unique.to_csv("../data/processed/clean_airbnb_unique.csv", index=False)
+
+df_location_counts = df_unique.value_counts(['latitude', 'longitude']).reset_index(name='counts')
+
+default_location = [35.585601, -82.544137]
+default_zoom_start = 10
+
+base_map = folium.Map(location=default_location, control_scale=True, zoom_start=default_zoom_start)
+HeatMap(data=df_location_counts.values.tolist(), radius=8, max_zoom=13).add_to(base_map)
+base_map
+```
+:::
+
+::: g-col-6
+The map here visualizes all the listings in Asheville, North Carolina. The graph is composed of an actual graph of Asheville and a heatmap of listing locations. A greener and brighter area suggests there're more Airbnb lisitngs in this area. From the graph, we can see Ahevielle is a great representation of US cities, with most of the listings scatter around the downtown area and some around the airport.
+:::
+:::
+
+### Total revenue based on different room types
+
+```{python}
+#| warning: false
+#| label: roomType-revenue-times
+#| fig-cap: "Figure 6: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on"
+
+nc=pd.read_csv("../data/processed/clean_airbnb.gz")
+nc = nc.astype({'price': 'float', 'latitude': 'float', 'latitude': 'float', 'latitude': 'float', 'longitude': 'float', 
+              'accommodates': 'int', 'bedrooms': 'float', 'beds': 'float', 'minimum_nights': 'int', 'maximum_nights': 'int', 
+              'number_of_reviews': 'int', 'calculated_host_listings_count': 'int', 'calculated_host_listings_count_entire_homes': 'int', 
+              'calculated_host_listings_count_private_rooms': 'int', 'calculated_host_listings_count_shared_rooms': 'int', 'reviews_per_month': 'float'})
+nc['date'] = pd.to_datetime(nc['date'])
+#print(len(nc), len(nc.columns))
+
+# change available to 1 or 0 for further calculation
+nc['fill'] = np.where(nc['available']=='f', 1, 0)
+
+# calculate the revenue
+nc['revenue'] = nc['price']*nc['fill']
+
+dates = nc[['id', 'price', 'number_of_reviews', 'date','room_type','fill','revenue']].groupby(['date','room_type','fill']).agg(
+    listings=('id', 'nunique'),
+    total_revenue=('revenue', 'sum'),
+    average_price=('price', 'mean'),
+    total_reviews=('number_of_reviews', 'sum'),).reset_index()
+
+dates.to_csv('../data/analytical/date_fill_roomType.gz', compression='gzip', index=False)
+
+# Create figure
+fig = go.Figure()
+
+type_room = dates['room_type'].unique()
+ls = []
+for i in range(5):
+    if i < len(type_room):
+        df_comb = dates.loc[(dates['fill']==1) & (dates['room_type']==type_room[i]), ['date','total_reviews','listings','total_revenue','room_type']].groupby(
+            ['date',]).agg(listings=('listings', 'count'),
+                            revenue=('total_revenue', 'sum'),
+                            reviews=('total_reviews', 'sum')).reset_index()
+        ls.append(type_room[i])
+    else: 
+        df_comb = dates.loc[(dates['fill']==1), ['date','total_reviews','listings','total_revenue']].groupby(
+            ['date',]).agg(listings=('listings', 'count'),
+                            revenue=('total_revenue', 'sum'),
+                            reviews=('total_reviews', 'sum')).reset_index()
+        ls.append('All types')
+    fig.add_trace(
+        go.Scatter(
+            uid=f"{i}",
+            x=list(df_comb.date), 
+            y=list(df_comb.revenue),
+            name=f"{ls[i]}",
+            visible=False,
+            line_color="#ff385c"
+            # colorbar_title=f"Revenue of {type_room[i]}",
+            )
+            )
+
+fig.data[4].visible = True
+
+# ADD DROPDOWN TO CHANGE TYPE
+x1_loc = 0.16
+y1_loc = 1.25
+buttons = []
+for i in range(len(ls)):
+    button = dict(
+        label=ls[(len(ls)-1-i)],
+        method="update",
+        args=[{"visible": [False] * len(fig.data)}]
+    )
+    button["args"][0]["visible"][i]=True
+    buttons.append(button)
+
+# Add range slider
+fig.update_layout(
+    # Set title
+    title_text="Total Revenue for different room type",
+    updatemenus=[
+        dict(
+            # IMPORTANT: args specifies the key-value pairing for what to change
+            buttons=buttons,
+            # PLACEMENT AND META DATA FOR THE BUTTON
+            direction="right",
+            showactive=True,  # HIGHLIGHTS ACTIVE DROPDOWN ITEM OR ACTIVE BUTTON IF TRUE
+            pad={"r": 10, "t": 10},  # PADDING
+            x=x1_loc,  # POSITION
+            y=y1_loc,
+            xanchor="left",  # ANCHOR POINT
+            yanchor="top",
+        )
+    ],
+    xaxis=dict(
+        rangeselector=dict(
+            buttons=list([
+                dict(count=1,
+                     label="1m",
+                     step="month",
+                     stepmode="backward"),
+                dict(count=3,
+                     label="3m",
+                     step="month",
+                     stepmode="backward"),
+                dict(count=6,
+                     label="6m",
+                     step="month",
+                     stepmode="backward"),
+                dict(step="all")
+            ])
+        ),
+        rangeslider=dict(
+            visible=True
+        ),
+        type="date"
+    )
+)
+
+# Change the font family
+fig.update_layout(
+    title={
+        'font': {'family': "Lucida Console", 'size': 20}
+    },
+    legend={'font': {'family': "Lucida Console", 'size': 14}},
+    font={'family': "Lucida Console", 'size': 14}
+)
+# fig.update_layout(template="plotly_white")
+fig.update_layout(plot_bgcolor='rgba(0,0,0,0)',paper_bgcolor='rgba(0,0,0,0)')
+# Change grid color and axis colors
+fig.update_xaxes(showline=True, linecolor='lightgrey', gridcolor='lightgrey')
+fig.update_yaxes(showline=True, linecolor='lightgrey', gridcolor='lightgrey')
+
+fig.show()
+```
+
+The plots for Airbnb reservations Revenue in North Carolina shows some interesting patterns. Firstly, revenue tends to increase significantly from Friday to Sunday and is at its lowest on Tuesdays and Wednesdays. Additionally, August and September have relatively low reservation rates compared to other months.
+
+Most of the Airbnb listings in North Carolina are private rooms and entire home/apartment types, with the majority of revenue coming from entire home/apartment rentals. It's not surprising that Hotel Room and Shared room types have lower revenues. The booking patterns for private rooms and entire home/apts differ based on the month. For private rooms, revenue tends to decrease from April to May, increase from mid-June, and further increase from mid-September. On the other hand, for entire home/apts, bookings decrease until mid-September.
+
+To increase revenue, households can adjust their pricing strategies by increasing prices during weekends, and decreasing them during weekdays to attract more travelers and increase occupancy rates, matching the booking patterns. Private room households may consider raising their prices after mid-July when booking rates tend to increase. For entire home/apt listings, households may consider converting them to rent private rooms inside the apartment/house instead of renting the entire space, as demand for entire home/apt bookings decreases until mid-September.
+
+### Revenue for different room types in Asheville, NC
+
+```{python}
+#| warning: false
+#| label: NC-roomType-reviews
+#| fig-cap: "Figure 7: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. Figure 8: caption to be added test words go on and on. caption to be added test words go on and on. Figure 9: caption to be added test words go on and on"
+
+alt.data_transformers.enable('default', max_rows=None)
+
+nc_listings = nc[['id', 'revenue', 'price', 'room_type', 'accommodates', 'bedrooms', 'beds','number_of_reviews','review_scores_rating','fill']].groupby(
+                 ['id', 'price', 'room_type', 'accommodates', 'bedrooms', 'beds','number_of_reviews','review_scores_rating']).agg(
+                        revenue=('revenue', 'sum'),
+                        fill=('fill', 'sum'),
+                        # median_price=('price', 'nunique'),
+                        # average_rating=('review_scores_rating', 'mean'),
+                        ).reset_index()
+# The occupancy rate was capped at 70% - a relatively high, but reasonable number for a highly occupied "hotel".
+# http://insideairbnb.com/data-assumptions/
+# Not consider those listings hve higher than 70% occupancy rate
+occupancy_rate=0.7
+nc_listings=nc_listings[nc_listings['fill'] < occupancy_rate*365]
+# Remove outliers
+nc_listings=nc_listings[nc_listings['revenue'] < 1000000]
+
+nc_listings.to_csv('../data/analytical/nc_listings.gz', compression='gzip', index=False)
+
+selection = alt.selection_single(fields=['room_type'],name='Random')
+color = alt.condition(selection,
+                      alt.value('#ff385c'),
+                      alt.value('#FCFFE7'))
+
+bar=(alt.Chart(nc_listings)
+ .mark_bar()
+ .encode(x='sum(revenue):Q',
+         y=alt.X('room_type:N',
+         sort=alt.EncodingSortField(field='revenue', op='sum', 
+                            order='descending')),
+         color=color
+        )
+).add_selection(selection).properties(
+        width=900,
+        height=100,
+    ).interactive()
+
+bar.title ="Total Revenue for different room type"
+bar.encoding.x.title = 'Revenue'
+bar.encoding.y.title = 'Room Type'
+
+
+color1 = alt.condition(selection,
+                      alt.Color('room_type:N',scale=color_scale),
+                      alt.value('#FCFFE7'))
+opacity = alt.condition(selection, alt.value(0.5), alt.value(0.05))
+
+scatter_plot1 = alt.Chart(nc_listings).mark_circle(clip=True).encode(
+    alt.X('number_of_reviews:Q', scale=alt.Scale(zero=False, domain=(-1, 1100))), #, type='quantitative' .scale(domain=(0.1, 5.5))
+    alt.Y('revenue', scale=alt.Scale(zero=False, padding=1),),
+    color=color1,
+    opacity=opacity,
+    size=alt.Size('price:Q'),
+#     opacity=alt.value(0.5),
+    tooltip=['revenue:Q', 'number_of_reviews:Q', 'room_type:N', 'beds:O'],
+    ).properties(
+        width=300,
+        height=300,
+    ).interactive()
+
+scatter_plot2 = alt.Chart(nc_listings).mark_point().encode(
+    alt.X('review_scores_rating:Q', scale=alt.Scale(zero=False,domain=(2.5, 5.1))), #, type='quantitative'
+    alt.Y('revenue', scale=alt.Scale(zero=False, padding=1),),
+    color=color1,
+    opacity=opacity,
+    size='price',
+#     opacity=alt.value(0.5),
+    tooltip=['revenue:Q', 'review_scores_rating:Q', 'room_type:N', 'beds:O'],
+    ).properties(
+        width=300,
+        height=300,
+    ).interactive()
+
+# Configure the ticks
+tick_axis = alt.Axis(labels=False, domain=False, ticks=False)
+
+x_ticks1 = alt.Chart(nc_listings).mark_tick().encode(
+    alt.X('number_of_reviews:Q', title='', axis=tick_axis, scale=alt.Scale(zero=False, domain=(-1, 1100))),
+    alt.Y('room_type:N', title='', axis=tick_axis),
+    color=color1
+).properties(
+        width=300,
+        height=70,
+).interactive()
+
+x_ticks2 = alt.Chart(nc_listings).mark_tick().encode(
+    alt.X('review_scores_rating:Q', title='', scale=alt.Scale(zero=False,domain=(2.5, 5.1)), axis=tick_axis),
+    alt.Y('room_type:N', title='', axis=tick_axis),
+    color=color1
+).properties(
+        width=300,
+        height=70,
+).interactive()
+
+y_ticks = alt.Chart(nc_listings).mark_tick().encode(
+    alt.X('room_type:N', title='', axis=tick_axis),
+    alt.Y('revenue', title='', axis=tick_axis),
+    color=color1
+).properties(
+        width=70,
+        height=300,
+).interactive()
+
+sca_tick1=alt.vconcat(scatter_plot1, x_ticks1)
+sca_tick2=alt.vconcat(scatter_plot2, x_ticks2)
+
+# Build the chart
+# bar & (y_ticks | ((scatter_plot1 & x_ticks1) | (scatter_plot2 & x_ticks2)) )
+g = alt.vconcat(bar, alt.hconcat(y_ticks, alt.hconcat(sca_tick1, sca_tick2))).configure_axis(
+    labelFontSize=14
+    , titleFontSize=16
+    , labelFont=font_family
+    ,titleFont=font_family
+).configure_title(
+    fontSize=20,
+    font=font_family
+).configure_legend(
+    titleFontSize=14,
+    labelFontSize=14,
+    titleFont=font_family,
+    labelFont=font_family  # set legend label font family
+).configure(
+    background='transparent'
+)
+g
+```
+
+The scatterplot charts with number of reviews and review scores as x-axes and revenue as y-axis, with price as point size, offer some valuable insights for North Carolina Airbnb hosts. One of the key findings is that some listings with higher prices and fewer reviews generate more revenue, likely due to having more beds available. However, for most listings with 0-100 reviews, increasing the number of reviews does not necessarily lead to higher revenue, especially for those with fewer beds.
+
+The scatterplot chart also reveals that most listings in North Carolina have review scores higher than 4.5, and higher review scores tend to generate higher revenue. This indicates that hosts should prioritize providing top-notch services to guests to receive positive reviews, which can ultimately boost their revenue. By maintaining high-quality services and keeping guests happy, hosts can improve their review scores and increase their revenue in the long run.
+
+### Most Popular Amenities
+
+```{python}
+#| warning: false
+#| label: NC-top-amenity
+#| fig-cap: "Figure 10: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on"
+
+df1=pd.read_csv("../data/processed/clean_airbnb.gz")
+df2=pd.read_csv("../data/processed/clean_listings.gz")
+df1_unique = df1.drop_duplicates(subset='id', keep='first')
+
+amenities =df1_unique['amenities']
+# Create an empty dictionary to store the word counts
+amenities_counts = {}
+
+# Loop through each sublist in the list of lists
+for sublist in amenities:
+    # Loop through each word in the sublist
+    for word in json.loads(sublist):
+        # If the word is already in the dictionary, increment its count
+        if word in amenities_counts:
+            amenities_counts[word] += 1
+        # Otherwise, add the word to the dictionary with a count of 1
+        else:
+            amenities_counts[word] = 1
+
+# Sort the dictionary based on its values in descending order
+sorted_dict = dict(sorted(amenities_counts.items(), key=lambda item: item[1], reverse=True))
+
+amenity = pd.DataFrame(list(sorted_dict.items()), columns=['name', 'count'])
+
+
+top10=amenity.loc[:10]
+
+domains = ['Smoke alarm', 'Hangers', 'Dishes and silverware', 'Microwave', 'Wifi']
+color_scale = alt.Scale(
+    domain=domains,
+)
+
+shape_scale = alt.Scale(
+    domain=domains,
+    range=[
+    #alarm
+    "M8.5 5.5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9V5.5z M6.5 0a.5.5 0 0 0 0 1H7v1.07a7.001 7.001 0 0 0-3.273 12.474l-.602.602a.5.5 0 0 0 .707.708l.746-.746A6.97 6.97 0 0 0 8 16a6.97 6.97 0 0 0 3.422-.892l.746.746a.5.5 0 0 0 .707-.708l-.601-.602A7.001 7.001 0 0 0 9 2.07V1h.5a.5.5 0 0 0 0-1h-3zm1.038 3.018a6.093 6.093 0 0 1 .924 0 6 6 0 1 1-.924 0zM0 3.5c0 .753.333 1.429.86 1.887A8.035 8.035 0 0 1 4.387 1.86 2.5 2.5 0 0 0 0 3.5zM13.5 1c-.753 0-1.429.333-1.887.86a8.035 8.035 0 0 1 3.527 3.527A2.5 2.5 0 0 0 13.5 1z",
+    #hanger
+    "M13 10.551v-.678A4.005 4.005 0 0 0 16 6c0-2.206-1.794-4-4-4S8 3.794 8 6h2c0-1.103.897-2 2-2s2 .897 2 2-.897 2-2 2a1 1 0 0 0-1 1v1.551l-8.665 7.702A1.001 1.001 0 0 0 3 20h18a1.001 1.001 0 0 0 .664-1.748L13 10.551zM5.63 18 12 12.338 18.37 18H5.63z",
+    #dish washer
+    "M20.9999 3.99999L21 20C21 21.1046 20.1046 22 19 22H5C3.89543 22 3 21.1046 3 20V4C3 2.89543 3.89543 2 5 2H18.9999C20.1045 2 20.9999 2.89543 20.9999 3.99999Z M18 5.01L18.01 4.99889 M12 19C15.3137 19 18 16.3137 18 13C18 9.68629 15.3137 7 12 7C8.68629 7 6 9.68629 6 13C6 16.3137 8.68629 19 12 19Z M12 16C10.3431 16 9 14.6569 9 13 M18 5.01L18.01 4.99889",
+    #mircrowave
+    "M6.8,10.61L5.37,9.19C5.73,8.79,6.59,8,7.75,8c0.8,0,1.39,0.39,1.81,0.67C9.87,8.88,10.07,9,10.25,9 c0.37,0,0.8-0.41,0.95-0.61l1.42,1.42c-0.36,0.4-1.22,1.19-2.37,1.19c-0.79,0-1.37-0.38-1.79-0.66C8.13,10.12,7.94,10,7.75,10 C7.38,10,6.95,10.41,6.8,10.61z M7.75,15c0.19,0,0.38,0.12,0.71,0.34c0.42,0.28,1,0.66,1.79,0.66c1.16,0,2.01-0.79,2.37-1.19 l-1.42-1.42c-0.15,0.2-0.59,0.61-0.95,0.61c-0.18,0-0.38-0.12-0.69-0.33C9.14,13.39,8.55,13,7.75,13c-1.16,0-2.02,0.79-2.38,1.19 l1.42,1.42C6.95,15.41,7.38,15,7.75,15z M22,6v12c0,1.1-0.9,2-2,2H4c-1.1,0-2-0.9-2-2V6c0-1.1,0.9-2,2-2h16C21.1,4,22,4.9,22,6z M14,6H4v12h10V6z M19,16c0-0.55-0.45-1-1-1c-0.55,0-1,0.45-1,1c0,0.55,0.45,1,1,1C18.55,17,19,16.55,19,16z M19,12 c0-0.55-0.45-1-1-1c-0.55,0-1,0.45-1,1c0,0.55,0.45,1,1,1C18.55,13,19,12.55,19,12z M19,7h-2v2h2V7z",
+    #Wifi
+    "M15.384 6.115a.485.485 0 0 0-.047-.736A12.444 12.444 0 0 0 8 3C5.259 3 2.723 3.882.663 5.379a.485.485 0 0 0-.048.736.518.518 0 0 0 .668.05A11.448 11.448 0 0 1 8 4c2.507 0 4.827.802 6.716 2.164.205.148.49.13.668-.049z M13.229 8.271a.482.482 0 0 0-.063-.745A9.455 9.455 0 0 0 8 6c-1.905 0-3.68.56-5.166 1.526a.48.48 0 0 0-.063.745.525.525 0 0 0 .652.065A8.46 8.46 0 0 1 8 7a8.46 8.46 0 0 1 4.576 1.336c.206.132.48.108.653-.065zm-2.183 2.183c.226-.226.185-.605-.1-.75A6.473 6.473 0 0 0 8 9c-1.06 0-2.062.254-2.946.704-.285.145-.326.524-.1.75l.015.015c.16.16.407.19.611.09A5.478 5.478 0 0 1 8 10c.868 0 1.69.201 2.42.56.203.1.45.07.61-.091l.016-.015zM9.06 12.44c.196-.196.198-.52-.04-.66A1.99 1.99 0 0 0 8 11.5a1.99 1.99 0 0 0-1.02.28c-.238.14-.236.464-.04.66l.706.706a.5.5 0 0 0 .707 0l.707-.707z"
+
+    #"M17.671 14.307C16.184 12.819 14.17 12 12 12s-4.184.819-5.671 2.307l1.414 1.414c1.11-1.11 2.621-1.722 4.257-1.722 1.636.001 3.147.612 4.257 1.722l1.414-1.414z M20.437 11.292c-4.572-4.573-12.301-4.573-16.873 0l1.414 1.414c3.807-3.807 10.238-3.807 14.045 0l1.414-1.414z",
+    ]
+)
+
+top5=top10.iloc[[0,2,3,6,8]]
+test=top5.copy()
+test['count']=round(top5['count'])/50
+df_unmelted = test.loc[test.index.repeat(test['count'])].reset_index(drop=True)
+
+bars = alt.Chart(df_unmelted).mark_point(filled=True, opacity=1, size=8).encode(
+    alt.X('x:O', axis=None),
+    alt.Y('name:N'),
+    alt.Shape('name:N', scale=shape_scale,title="Amenity Type",legend=alt.Legend(symbolSize=5,labelOverlap=False)),
+    #alt.ShapeValue(shape_scale)
+    alt.Color('name:N', scale=color_scale,title="Amenity Type"),
+    #alt.legend(orient="left")
+    #color=alt.value("#116EA1"),
+).properties(width=1250, height=440).transform_window(
+    x='rank()',
+    groupby=['name']
+)
+#.configure_axis(
+#    labelFontSize=30,
+#    titleFontSize=20,
+#    grid=False
+#)
+
+#bars.configure_title(fontSize=14).configure(background='#D9E9F0')
+
+bars.title ="Top 5 Counts Amenities"
+bars.encoding.x.title = 'Counts'
+bars.encoding.y.title = 'Amenities'
+
+#bars.configure_title(fontSize=14).configure(background='white')
+
+#bars
+
+```
+
+```{python}
+#| warning: false
+bars2 = alt.Chart(top5).mark_point(filled=True, opacity=1, size=20).encode(
+    alt.X('count:Q',title="Count",scale=alt.Scale(domain=[1000,4500])),
+    alt.Y('name:N',title="Amenities"),
+    alt.Shape('name:N', scale=shape_scale),
+    #alt.ShapeValue(shape_scale)
+    alt.Color('name:N' ),
+    #alt.legend(orient="left")
+    #color=alt.value("#116EA1"),
+).properties(width=950, height=340).configure(background="transparent")
+
+
+#bars.configure_title(fontSize=14).configure(background='#D9E9F0')
+
+
+bars2.title ="Top 5 Counts Amenities"
+#bars.encoding.x.title = 'Count'
+#bars.encoding.y.title = 'Amenities'
+
+#bars.configure_title(fontSize=30).configure(background='white')
+#bars2
+```
+
+```{python}
+#| warning: false
+#| label: NC-top-amenity-count
+#| fig-cap: "Figure 11: Caption to be added test words go on and on, caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on. caption to be added test words go on and on"
+
+domains = ['Smoke alarm', 'Hangers', 'Dishes and silverware', 'Microwave', 'Wifi']
+
+price_amenty = df1_unique[['amenities','price']].reset_index(drop=True)
+
+price_amenty = price_amenty[price_amenty['amenities'].apply(lambda x: any(item in x for item in domains))]
+
+review_amenty = df1_unique[['amenities','review_scores_rating']].reset_index(drop=True)
+
+price_amenty['tag'] = price_amenty['amenities'].apply(lambda x: 'Smoke alarm' if 'Smoke alarm' in x else '')
+review_amenty['tag'] = review_amenty['amenities'].apply(lambda x: 'Smoke alarm' if 'Smoke alarm' in x else '')
+def split_amenities(df):
+    new_df=df.copy()
+    c=1
+    for i,row in df.iterrows():
+        if i%100 == 0:
+            #print(100*c)
+            c+=1
+        try:
+            new_row =pd.DataFrame([df.iloc[i]]).copy()
+            if 'Hangers' in row[0]:
+                #print(1)
+                new_row['tag'] = 'Hangers'
+                new_df=pd.concat([new_df, new_row], axis=0)
+            if 'Dishes and silverware' in row[0]:
+                new_row['tag'] = 'Dishes and silverware'
+                new_df=pd.concat([new_df, new_row], axis=0)
+            if 'Microwave' in row[0]:
+                #new_row = row.copy()
+                new_row['tag'] = 'Microwave'
+                new_df=pd.concat([new_df, new_row], axis=0)
+            if 'Wifi' in row[0]:
+                #new_row = row.copy()
+                new_row['tag'] = 'Wifi'
+                new_df=pd.concat([new_df, new_row], axis=0)
+        except IndexError:
+            break
+    new_df=new_df[new_df['tag']!=""]
+    #new_df = new_df[new_df['price']<3000]
+    return new_df
+
+
+z=split_amenities(price_amenty)
+r=split_amenities(review_amenty)
+
+alt.data_transformers.enable('default', max_rows=None)
+
+boxs=alt.Chart(z).mark_boxplot(clip=True,size=50).encode(
+    alt.X('tag:N',title="Amenities"),
+    alt.Y('price:Q', title="Price",scale=alt.Scale(domain=[0,400])),
+    alt.Color("tag:N",title="Amenity Type"),
+).properties(width=1250, height=340)
+
+boxs.title ="Boxplot of Price for Top 5 Counts Amenities"
+
+boxs2=alt.Chart(r).mark_boxplot(clip=True,size=50).encode(
+    alt.X('tag:N',title="Amenities"),
+    alt.Y('review_scores_rating:Q', title="Review Scores Rating",scale=alt.Scale(domain=[4.5,5])),
+    alt.Color("tag:N",title="Amenity Type"),
+).properties(width=1250, height=340)
+
+boxs2.title ="Boxplot of review scores rating for Top 5 Counts Amenities"
+
+Chart=(boxs & bars & boxs2).configure(background="transparent")
+Chart
+```
+
+Based on the graph, it is evident that the top 5 amenities that are most popular among Airbnb guests are Smoke alarm, Hangers, Dishes and silverware, Microwave, and Wifi. These amenities are all basic necessities that guests expect to find in a rental, and their availability can significantly impact the overall guest experience.
+
+Furthermore, the graph shows that the Airbnb listings with these top 5 amenities have a similar price of around \$200 and high review scores ratings around 4.85. This suggests that these amenities are essential for maintaining a competitive price point and ensuring guest satisfaction.
+
+In conclusion, as an Airbnb host, it is crucial to offer these popular amenities to increase your rental's price and review scores. Guests are more likely to choose a rental with these amenities, which can result in more bookings and positive reviews. Therefore, investing in these amenities can be a smart move for hosts looking to improve their Airbnb business.
+
+# Results
+
+In summary, our analysis of the Airbnb market in North Carolina has revealed several key findings and insights: 1. Hotel rooms have the highest average price and occupancy rate, followed by entire home/apartment rentals, private rooms, and shared rooms. 2. Airbnb revenues in North Carolina show patterns of higher revenue on weekends and lower revenue during weekdays. August and September experience relatively low reservation rates compared to other months. 3. To increase revenue, hosts should adjust their pricing strategies to match the booking patterns. This can be increasing prices during weekends and decreasing them during weekdays to attract more travelers and increase occupancy rates. 4. The scatter plot charts reveal that higher review scores generally lead to higher revenue. Hosts should prioritize providing high-quality services to guests to receive positive reviews, which can ultimately boost their revenues. 5. The top 5 amenities that are most popular among Airbnb guests are Smoke alarm, Hangers, Dishes and silverware, Microwave, and Wifi. Adding these amenities can help hosts to increase a competitive price point and ensure guest satisfaction.
+
+Based on these findings, Airbnb hosts in North Carolina can enhance their listing performance and increase revenue by adjusting their pricing strategies according to booking patterns, focusing on delivering high-quality services to achieve better review scores, and offering the most popular amenities to attract more guests. By conducting these strategies, hosts can improve their Airbnb business and create a better overall guest experience.
+
+# Suggestion
+
+1.  Pricing Strategy: Hosts should adjust their pricing strategies according to booking patterns, increasing prices during weekends and decreasing them during weekdays. This can help attract more travelers and increase occupancy rates, getting to higher revenues.
+2.  Guest Needs/ Amenity Improvement: Hosts should prioritize providing high-quality services to guests, aiming to achieve a better review score. This includes offering the top 5 popular amenities (Smoke alarm, Hangers, Dishes and silverware, Microwave, and Wifi from previous analysis) and ensuring a clean and comfortable environment for the customers. Positive reviews can lead to higher revenues and a better occupancy rate for the host.
+3.  Promote Seasons: Local businesses can collaborate on campaigns to promote tourism during the low season (April to May based on the analysis) to increase the demand for accommodations during these periods. This can help balance the demand throughout the year and support the local economy.
